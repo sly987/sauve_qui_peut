@@ -1,11 +1,13 @@
-use communication_module::connect_to_server;
+use team_module::*;
 
-mod communication_module;
+
+mod team_module;
 
 
 fn main() {
-    let OK = connect_to_server();
-    match OK {
+    let s: String = "hevllxxor".to_string();
+    let start = create_team(s);
+    match start {
         Ok(())=>{println!("ok")}
         Err(err)=>{println!("{err}");}
     }
