@@ -4,6 +4,8 @@ use std::net::TcpStream;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
+use crate::communication_module::set_tcp_stream;
+
 #[derive(Serialize, Deserialize)]
 struct RegisterTeam {
     name: String,
@@ -36,57 +38,68 @@ struct AlreadyRegisteredTeam {
     Err: String,
 }
 
-pub fn create_team(name: String) -> std::io::Result<()>  {
-    // Sérialiser le message en JSON
-    let message = Messages::RegisterTeam { name };
-    let serialized = serde_json::to_string(&message)?;
+pub fn create_team( name: String) -> std::io::Result<Option<String>>  {
+    let mut stream = set_tcp_stream();
+    match stream {
+        Ok(mut stream) => {
+            let message = Messages::RegisterTeam { name };
+            let serialized = serde_json::to_string(&message)?;
 
-    // Connexion au serveur
-    let mut stream = TcpStream::connect("localhost:8778")?;
+            // Connexion au serveur
+            
 
-    // Envoyer la longueur du message (4 bytes)
-    let length = serialized.len() as u32;
-    stream.write_all(&length.to_le_bytes())?;
+            // Envoyer la longueur du message (4 bytes)
+            let length = serialized.len() as u32;
+            stream.write_all(&length.to_le_bytes())?;
 
-    // Envoyer le message JSON
-    stream.write_all(serialized.as_bytes())?;
+            // Envoyer le message JSON
+            stream.write_all(serialized.as_bytes())?;
 
-    // Lire la longueur de la réponse (4 bytes)
-    let mut length_buffer = [0; 4];
-    stream.read_exact(&mut length_buffer)?;
-    let response_length = u32::from_le_bytes(length_buffer) as usize;
+            // Lire la longueur de la réponse (4 bytes)
+            let mut length_buffer = [0; 4];
+            stream.read_exact(&mut length_buffer)?;
+            let response_length = u32::from_le_bytes(length_buffer) as usize;
 
-    // Lire la réponse JSON complète
-    let mut response_buffer = vec![0; response_length];
-    stream.read_exact(&mut response_buffer)?;
+            // Lire la réponse JSON complète
+            let mut response_buffer = vec![0; response_length];
+            stream.read_exact(&mut response_buffer)?;
 
-    // Convertir en String
-    let response_str = String::from_utf8_lossy(&response_buffer);
-    println!("Réponse brute: {}", response_str);
+            // Convertir en String
+            let response_str = String::from_utf8_lossy(&response_buffer);
+            println!("Réponse brute: {}", response_str);
 
-    // Désérialiser la réponse
-    match serde_json::from_str::<RegisterTeamResponse>(&response_str) {
-        Ok(response) => {
-            match response.RegisterTeamResult {
-                RegisterTeamResult::Ok(success) => {
-                    println!("Inscription réussie !");
-                    println!("Nombre de joueurs attendus : {}", success.expected_players);
-                    println!("Token d'inscription : {}", success.registration_token);
-                    return Ok(())
+            // Désérialiser la réponse
+            match serde_json::from_str::<RegisterTeamResponse>(&response_str) {
+                Ok(response) => {
+                    match response.RegisterTeamResult {
+                        RegisterTeamResult::Ok(success) => {
+                            println!("Inscription réussie !");
+                            println!("Nombre de joueurs attendus : {}", success.expected_players);
+                            println!("Token d'inscription : {}", success.registration_token);
+                            return Ok(Some(success.registration_token))
+                        }
+                        RegisterTeamResult::Err(error) => {
+                            println!("Erreur d'inscription : {}", error);
+                            return Err(io::Error::new(io::ErrorKind::Other, error))
+                        }
+                    }
                 }
-                RegisterTeamResult::Err(error) => {
-                    println!("Erreur d'inscription : {}", error);
-                  
+                Err(err) => {
+                    println!("Erreur de parsing JSON : {}", err);
+                
                 }
             }
+            Ok(None)
+            
+            
         }
         Err(err) => {
-            println!("Erreur de parsing JSON : {}", err);
-         
+            println!("Erreur de serveur :{}", err);
+            Ok(None)
         }
     }
-
-    Ok(())
+    // Sérialiser le message en JSON
+    
 }
 
 
@@ -137,7 +150,7 @@ pub fn register_team() -> std::io::Result<()> {
     // Enregistrer chaque équipe
     for team_name in teams {
         println!("Enregistrement de l'équipe : {}", team_name);
-        if let Err(err) = create_team(team_name) {
+        if let Err(err) = create_team( team_name) {
             println!("Erreur lors de l'enregistrement de l'équipe : {}", err);
         }
     }
