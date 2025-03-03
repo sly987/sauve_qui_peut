@@ -1,4 +1,4 @@
-use std::{io::{self, Read, Write}, net::TcpStream, sync::{Arc, Mutex}, thread};
+use std::{fmt, io::{self, Read, Write}, net::TcpStream, sync::{Arc, Mutex}, thread};
 
 use serde::{de::value::Error, Deserialize, Serialize};
 use crate::team_module;
@@ -63,10 +63,21 @@ impl Cell {
     pub fn from_bits(bits: &str) -> Self {
         match bits {
             "00" | "1111" => Cell::Undefined,
-            "01" | "0000" => Cell::Open,
-            "10"   => Cell::Wall,
-            "1000" => Cell::Exit,
+            "01" | "0000" | "0001" | "0101" => Cell::Open,
+            "10" | "11" | "0111" | "0011" | "0010" | "0110"| "1010" => Cell::Wall,
+            "1000"| "1001" => Cell::Exit,
             _ => Cell::Unknown(bits.to_string())
+        }
+    }
+}
+impl fmt::Display for Cell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Cell::Undefined => write!(f, "U"), // Représentation pour Undefined
+            Cell::Open => write!(f, "O"),      // Représentation pour Open
+            Cell::Wall => write!(f, "W"),      // Représentation pour Wall
+            Cell::Exit => write!(f, "E"),      // Représentation pour Exit
+            Cell::Unknown(bits) => write!(f, "?{}", bits), // Représentation pour Unknown
         }
     }
 }
@@ -343,11 +354,6 @@ pub fn base64_decode(encoded: &str) -> Result<Vec<u8>, String> {
         indices_padded.push(0); // Ajouter des 0 pour simuler le padding
     }
 
-    // Vérifier que la longueur des indices est un multiple de 4
-    if indices_padded.len() % 4 != 0 {
-        return Err("Chaîne base64 invalide : nombre de caractères incorrect".to_string());
-    }
-
     // Regrouper les indices en blocs de 4 caractères
     let mut decoded = Vec::new();
     for chunk in indices_padded.chunks(4) {
@@ -377,6 +383,8 @@ fn to_binary(bytes: &[u8]) -> Vec<String> {
 }
 
 fn to_hex(bytes: &[u8]) -> Vec<String> {
+    
+    println!("{:?}", bytes);
     bytes
         .iter()
         .map(|byte| format!("{:02x}", byte)) // Convertir chaque octet en hexadécimal sur 2 caractères
@@ -385,7 +393,7 @@ fn to_hex(bytes: &[u8]) -> Vec<String> {
 fn get_first_9_hex_chars_from_array(hex_array: &[String]) -> String {
     // Concaténer toutes les chaînes du tableau
     let concatenated: String = hex_array.concat();
-
+    println!("hexa : {}", concatenated);
    
     // Extraire les 9 premiers caractères
     concatenated[..9].to_string()
@@ -419,7 +427,7 @@ fn decoder(encoded_str:  &str  )->Result<(Vec<Vec<Cell>>), String>{
 
             // Séparer les octets en deux groupes
             let (first_six_bytes, remaining_bytes) = decoded_bytes.split_at(6);
-
+            
             // Convertir les 6 premiers octets en binaire
             let (first_half, second_half) = split_line_column(&to_binary(first_six_bytes));
             println!("Représentation binaire (6 premiers octets) : {:?} , {:?}", first_half, second_half);
@@ -429,7 +437,8 @@ fn decoder(encoded_str:  &str  )->Result<(Vec<Vec<Cell>>), String>{
             
             println!("Représentation binaire (5 octets suivants) : {:?}", hex);
             
-            let radar_view=create_radar_view(first_half, second_half, hex);
+            let radar_view=create_radar_view(first_half, second_half,hex);
+            display_radar_view(&radar_view);
             Ok(radar_view)
         }
         Err(err) => {
@@ -440,7 +449,7 @@ fn decoder(encoded_str:  &str  )->Result<(Vec<Vec<Cell>>), String>{
 }
 
 fn split_line_column(array: &[String]) -> (Vec<String>, Vec<String>) {
-    
+    println!("bits : {:?}", array);
     // Séparer le tableau en deux tranches de 3 éléments
     let mut first_half  = array[..3].to_vec();
     let mut second_half = array[3..].to_vec();
@@ -494,29 +503,56 @@ fn reader_cell(array:Vec<Vec<String>>)->Vec<Vec<Cell>>{
 
 fn create_radar_view(rows: Vec<String>, columns: Vec<String>, cells: Vec<Vec<String>>)->Vec<Vec<Cell>>{
     let rows_cell= reader_column_line(rows);
-    let column_cell = reader_column_line(columns);
+    let columns_cell = reader_column_line(columns);
     let radar_cell = reader_cell(cells);
     let mut radar_view: Vec<Vec<Cell>> = vec![vec![Cell::Undefined; 7]; 7];
-    for i in 0..3{
-        radar_view[i*2+1][0] = rows_cell[0][i].clone();
-        radar_view[i*2+1][2] = rows_cell[1][i].clone();
-        radar_view[i*2+1][4] = rows_cell[2][i].clone();
-        radar_view[i*2+1][6] = rows_cell[3][i].clone();
+    let mut j = 0;
+    for element in columns_cell.clone(){
+        println!("rows {:?}", element)
     }
-    for i in 0..3{
+    for i in (1..radar_view.len()).step_by(2) {
+        radar_view[i][0] = columns_cell[j][0].clone();
+        radar_view[i][2] = columns_cell[j][1].clone();
+        radar_view[i][4] = columns_cell[j][2].clone();
+        radar_view[i][6] = columns_cell[j][3].clone();
+        j=j+1;
+    }
+    println!("j {}", j);
+    j=0;
+    for element in rows_cell.clone(){
+        println!("columns {:?}", element)
+    }
+    for i in (0..radar_view.len()).step_by(2){
        
-        radar_view[i*2][1] = column_cell[0][i].clone();
-        radar_view[i*2][3] = column_cell[1][i].clone();
-        radar_view[i*2][5] = column_cell[2][i].clone();
+        radar_view[i][1] = rows_cell[j][0].clone();
+        radar_view[i][3] = rows_cell[j][1].clone();
+        radar_view[i][5] = rows_cell[j][2].clone();
+        j=j+1;
     }
-    for i in 0..3{
+    println!("j {}", j);
+    j=0;
+    for element in radar_cell.clone(){
+        println!("rows {:?}", element)
+    }
+    for i in (1..radar_view.len()).step_by(2){
         
-        radar_view[i*2+1][1] = radar_cell[0][i].clone();
-        radar_view[i*2+1][3] = radar_cell[1][i].clone();
-        radar_view[i*2+1][5] = radar_cell[2][i].clone();
-    
+        radar_view[i][1] = radar_cell[j][0].clone();
+        radar_view[i][3] = radar_cell[j][1].clone();
+        radar_view[i][5] = radar_cell[j][2].clone();
+        j=j+1;
     }
+    println!("j {}", j);
     radar_view
+}
+
+
+fn display_radar_view(radar_view: &Vec<Vec<Cell>>) {
+    for row in radar_view {
+        for cell in row {
+            print!("{} ", cell); // Affiche chaque cellule suivie d'un espace
+        }
+        println!(); // Nouvelle ligne après chaque ligne de la matrice
+    }
 }
 
 fn move_player(radar_view: Vec<Vec<Cell>>, hint : Option<RelativeDirection>)->RelativeDirection{
